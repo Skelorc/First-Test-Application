@@ -27,7 +27,6 @@ public class MainActivity extends AppCompatActivity {
 
     private final String URL = "https://navsegda.net/";
     WebView webView;
-
     MyWebChromeClient myWebChromeClient = new MyWebChromeClient();
     SharedPreferences prefs;
 
@@ -55,11 +54,13 @@ public class MainActivity extends AppCompatActivity {
         prefs = this.getSharedPreferences(this.getPackageName(),
                 Activity.MODE_PRIVATE);
         String s = prefs.getString("lastUrl", "");
-        if(s.equals("")) {
+        if(!s.equals(""))
+        {
             webView.loadUrl(s);
+
         }
         else
-            {
+        {
             webView.loadUrl(URL);
         }
     }
@@ -69,8 +70,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        SharedPreferences prefs = this.
-                getSharedPreferences(this.getPackageName(), Activity.MODE_PRIVATE);
         SharedPreferences.Editor edit = prefs.edit();
         edit.putString("lastUrl",webView.getUrl());
         edit.apply();
