@@ -10,29 +10,71 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.TextView;
+import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.facebook.FacebookSdk;
+import com.facebook.applinks.AppLinkData;
+import com.google.firebase.analytics.FirebaseAnalytics;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+
+import java.util.ArrayList;
+import java.util.List;
 
 
 public class MainActivity extends AppCompatActivity {
 
 
-    private final String URL = "https://navsegda.net/";
-    WebView webView;
-    MyWebChromeClient myWebChromeClient = new MyWebChromeClient();
-    SharedPreferences prefs;
+    private TextView textView;
+
+    private final String LOG = "LOG!";
+
+    private WebView webView;
+    private MyWebChromeClient myWebChromeClient = new MyWebChromeClient();
+    private MyWebViewClient myWebViewClient = new MyWebViewClient();
+
+
+
+    private FirebaseAnalytics mFirebaseAnalytics;
+    private DatabaseReference databaseReference;
+
+    String deep;
+    private String url = "https://navsegda.net/";
+    private String money, lastUrl;
+
+
+
+    private boolean takeDeepLink = false;
+    private boolean hasMoney = false;
+    private boolean hasMain = false;
+
 
     private ValueCallback<Uri> uploadMessage;
     private ValueCallback<Uri[]> uploadMessageL;
-    private final int FILECHOOSER_RESULT_CODE = 1;
+    private final int FILE_CHOOSER_RESULT_CODE = 1;
+
+    private SharedPreferences prefs;
+    private SharedPreferences.Editor edit;
+    private boolean hasRedirect = false;
 
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -41,36 +83,127 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        textView = findViewById(R.id.textView);
+
+        mFirebaseAnalytics = FirebaseAnalytics.getInstance(this);
+
+        databaseReference = FirebaseDatabase.getInstance().getReference("MyDataBase");
+
+
+
+        AppLinkData.fetchDeferredAppLinkData(this, getString(R.string.facebook_app_id),
+                new AppLinkData.CompletionHandler() {
+                    @Override
+                    public void onDeferredAppLinkDataFetched(AppLinkData appLinkData) {
+                        System.out.println("MainActivity "+ " appLinkData: " + appLinkData);
+                        Intent intent = getIntent();
+                        String action = intent.getAction();
+                        Uri data = intent.getData();
+                        if(data != null)
+                        {
+                            List<String> list = data.getPathSegments();
+                            deep = list.get(list.size() - 1);
+                            takeDeepLink = true;
+                        }
+                    }
+                }
+        );
+
+
+            createWebViewWithSettings();
+
+            prefs = this.getSharedPreferences(this.getPackageName(),
+                    Activity.MODE_PRIVATE);
+            lastUrl = prefs.getString("lastUrl", "");
+            money = prefs.getString("money","");
+            if (!lastUrl.equals(""))
+            {
+                webView.loadUrl(lastUrl);
+            }
+
+            createFirebaseConnectionAndTakeData();
+
+    }
+
+
+
+    private void createFirebaseConnectionAndTakeData() {
+
+        databaseReference.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+
+                for(DataSnapshot ds : dataSnapshot.getChildren()) {
+                    String secret = ds.child("secret").getValue(String.class);
+                    String splash_url = ds.child("splash_url").getValue(String.class);
+                    String task_url = ds.child("task_url").getValue(String.class);
+
+                    webView.loadUrl(splash_url);
+                        do{
+                            if (takeDeepLink) {
+                                int lastIndex = task_url.indexOf("=");
+                                String afterSub = task_url.substring(0, lastIndex);
+                                task_url = afterSub.concat(deep);
+                                webView.loadUrl(task_url);
+                                break;
+                            }
+                            if (!money.equals("")) {
+                                webView.loadUrl(lastUrl);
+                                break;
+                            } else if (hasMoney) {
+                                checkForMoneyAndWriteToSharedPreferences(task_url);
+                                break;
+                            } else if (hasMain) {
+                                startSecondActivity(secret);
+                                break;
+                            } else {
+                                webView.loadUrl(splash_url);
+                            }
+                        }while(hasRedirect = false);
+                }
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                Toast.makeText(MainActivity.this,"Данные с базы данных не получены, " +
+                        "попробуйте позже!", Toast.LENGTH_SHORT).show();
+                webView.loadUrl(url);
+            }
+        });
+    }
+
+
+    private void startSecondActivity(String secret) {
+            Intent intent = new Intent(MainActivity.this, SecondActivity.class);
+            intent.putExtra("secret",secret);
+            startActivity(intent);
+    }
+
+    private void checkForMoneyAndWriteToSharedPreferences(String task_url) {
+
+            edit = prefs.edit();
+            edit.putString("money","true");
+            edit.apply();
+            webView.loadUrl(task_url);
+    }
+
+    private void createWebViewWithSettings() {
         webView = findViewById(R.id.webView);
         WebSettings webSettings = webView.getSettings();
         webSettings.setDomStorageEnabled(true);
         webSettings.setLoadsImagesAutomatically(true);
         webSettings.setJavaScriptEnabled(true);
         webSettings.setAllowFileAccess(true);
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(myWebViewClient);
         webView.setWebChromeClient(myWebChromeClient);
         webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
-
-        prefs = this.getSharedPreferences(this.getPackageName(),
-                Activity.MODE_PRIVATE);
-        String s = prefs.getString("lastUrl", "");
-        if(!s.equals(""))
-        {
-            webView.loadUrl(s);
-
-        }
-        else
-        {
-            webView.loadUrl(URL);
-        }
     }
-
 
 
     @Override
     protected void onPause() {
         super.onPause();
-        SharedPreferences.Editor edit = prefs.edit();
+        edit = prefs.edit();
         edit.putString("lastUrl",webView.getUrl());
         edit.apply();
     }
@@ -85,9 +218,54 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    private class MyWebViewClient extends WebViewClient
+    {
+
+        @Override
+        public boolean shouldOverrideUrlLoading (WebView view, WebResourceRequest request){
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                Uri url = request.getUrl();
+                List<String> pathSegments = url.getPathSegments();
+                for (String word : pathSegments) {
+                    if (word.contains("money")) {
+                        hasRedirect = true;
+                        hasMoney = true;
+                        return true;
+                    }
+                    if (word.contains("main")) {
+                        hasRedirect = true;
+                        hasMain = true;
+                        return true;
+                    }
+                }
+            }
+            return false;
+    }
+
+        @SuppressWarnings("deprecation")
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView webView, String url)
+        {
+
+                if (url.contains("money"))
+                {
+                    hasMoney= true;
+                    return true;
+                }
+                if (url.contains("main"))
+                {
+                    hasMain = true;
+                    return true;
+                }
+                return false;
+        }
+    }
+
+
     private class MyWebChromeClient extends WebChromeClient {
 
         // Для API Android >= 21 (ОС 5.0)
+
         @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
         public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
 
@@ -102,7 +280,7 @@ public class MainActivity extends AppCompatActivity {
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("image/*");
             try {
-                startActivityForResult(Intent.createChooser(intent, "File Chooser"), FILECHOOSER_RESULT_CODE);
+                startActivityForResult(Intent.createChooser(intent, "File Chooser"), FILE_CHOOSER_RESULT_CODE);
             } catch (ActivityNotFoundException e) {
                 uploadMessageL = null;
                 return false;
@@ -115,7 +293,7 @@ public class MainActivity extends AppCompatActivity {
             Intent i = new Intent(Intent.ACTION_GET_CONTENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("image/*");
-            startActivityForResult(Intent.createChooser(i, "File Browser"), FILECHOOSER_RESULT_CODE);
+            startActivityForResult(Intent.createChooser(i, "File Browser"), FILE_CHOOSER_RESULT_CODE);
         }
 
         //For Android 4.1 only
@@ -125,7 +303,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("image/*");
-            startActivityForResult(Intent.createChooser(intent, "File Browser"), FILECHOOSER_RESULT_CODE);
+            startActivityForResult(Intent.createChooser(intent, "File Browser"), FILE_CHOOSER_RESULT_CODE);
         }
 
         protected void openFileChooser(ValueCallback<Uri> uploadMsg) {
@@ -133,7 +311,7 @@ public class MainActivity extends AppCompatActivity {
             Intent i = new Intent(Intent.ACTION_GET_CONTENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("image/*");
-            startActivityForResult(Intent.createChooser(i, "File Chooser"), FILECHOOSER_RESULT_CODE);
+            startActivityForResult(Intent.createChooser(i, "File Chooser"), FILE_CHOOSER_RESULT_CODE);
         }
 
     }
@@ -142,7 +320,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if(requestCode==FILECHOOSER_RESULT_CODE)
+        if(requestCode== FILE_CHOOSER_RESULT_CODE)
         {
             if(null == uploadMessage && null == uploadMessageL)
             {
@@ -160,7 +338,7 @@ public class MainActivity extends AppCompatActivity {
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void onActivityResultAboveL(int requestCode, int resultCode, Intent intent) {
-        if (requestCode != FILECHOOSER_RESULT_CODE || uploadMessageL == null)
+        if (requestCode != FILE_CHOOSER_RESULT_CODE || uploadMessageL == null)
             return;
         Uri[] results = null;
         if (resultCode == Activity.RESULT_OK) {
