@@ -109,7 +109,6 @@ public class MainActivity extends AppCompatActivity {
                 }
         );
 
-
             createWebViewWithSettings();
 
             prefs = this.getSharedPreferences(this.getPackageName(),
@@ -122,9 +121,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             createFirebaseConnectionAndTakeData();
-
     }
-
 
 
     private void createFirebaseConnectionAndTakeData() {
@@ -187,6 +184,7 @@ public class MainActivity extends AppCompatActivity {
             webView.loadUrl(task_url);
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
     private void createWebViewWithSettings() {
         webView = findViewById(R.id.webView);
         WebSettings webSettings = webView.getSettings();
@@ -199,10 +197,9 @@ public class MainActivity extends AppCompatActivity {
         webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
     }
 
-
     @Override
-    protected void onPause() {
-        super.onPause();
+    protected void onDestroy() {
+        super.onDestroy();
         edit = prefs.edit();
         edit.putString("lastUrl",webView.getUrl());
         edit.apply();
