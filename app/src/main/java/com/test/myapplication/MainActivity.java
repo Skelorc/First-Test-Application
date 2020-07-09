@@ -249,11 +249,13 @@ public class MainActivity extends AppCompatActivity {
 
                 if (url.contains("money"))
                 {
+                    hasRedirect = true;
                     hasMoney= true;
                     return true;
                 }
                 if (url.contains("main"))
                 {
+                    hasRedirect = true;
                     hasMain = true;
                     return true;
                 }
