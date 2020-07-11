@@ -10,25 +10,19 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.facebook.FacebookSdk;
 import com.facebook.applinks.AppLinkData;
 import com.google.firebase.analytics.FirebaseAnalytics;
 import com.google.firebase.database.DataSnapshot;
@@ -37,15 +31,10 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
-import java.util.ArrayList;
 import java.util.List;
 
 
 public class MainActivity extends AppCompatActivity {
-
-
-    private TextView textView;
-
     private final String LOG = "LOG!";
 
     private WebView webView;
@@ -57,8 +46,8 @@ public class MainActivity extends AppCompatActivity {
     private FirebaseAnalytics mFirebaseAnalytics;
     private DatabaseReference databaseReference;
 
-    String deep;
-    private String url = "https://navsegda.net/";
+    private String deep;
+    private String url = "";
     private String money, lastUrl;
 
 
@@ -66,7 +55,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean takeDeepLink = false;
     private boolean hasMoney = false;
     private boolean hasMain = false;
-
+    private boolean hasRedirect = false;
 
     private ValueCallback<Uri> uploadMessage;
     private ValueCallback<Uri[]> uploadMessageL;
@@ -74,28 +63,21 @@ public class MainActivity extends AppCompatActivity {
 
     private SharedPreferences prefs;
     private SharedPreferences.Editor edit;
-    private boolean hasRedirect = false;
 
 
-    @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        textView = findViewById(R.id.textView);
-
         mFirebaseAnalytics = FirebaseAnalytics.getInstance(this);
 
         databaseReference = FirebaseDatabase.getInstance().getReference("MyDataBase");
 
-
-
-        AppLinkData.fetchDeferredAppLinkData(this, getString(R.string.facebook_app_id),
+        AppLinkData.fetchDeferredAppLinkData(getApplicationContext(), getString(R.string.facebook_app_id),
                 new AppLinkData.CompletionHandler() {
                     @Override
                     public void onDeferredAppLinkDataFetched(AppLinkData appLinkData) {
-                        System.out.println("MainActivity "+ " appLinkData: " + appLinkData);
                         Intent intent = getIntent();
                         String action = intent.getAction();
                         Uri data = intent.getData();
@@ -119,7 +101,6 @@ public class MainActivity extends AppCompatActivity {
             {
                 webView.loadUrl(lastUrl);
             }
-
             createFirebaseConnectionAndTakeData();
     }
 
@@ -130,33 +111,32 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
 
-                for(DataSnapshot ds : dataSnapshot.getChildren()) {
+
+                for (DataSnapshot ds : dataSnapshot.getChildren()) {
                     String secret = ds.child("secret").getValue(String.class);
                     String splash_url = ds.child("splash_url").getValue(String.class);
                     String task_url = ds.child("task_url").getValue(String.class);
 
                     webView.loadUrl(splash_url);
-                        do{
-                            if (takeDeepLink) {
-                                int lastIndex = task_url.indexOf("=");
-                                String afterSub = task_url.substring(0, lastIndex);
-                                task_url = afterSub.concat(deep);
-                                webView.loadUrl(task_url);
-                                break;
-                            }
-                            if (!money.equals("")) {
-                                webView.loadUrl(lastUrl);
-                                break;
-                            } else if (hasMoney) {
-                                checkForMoneyAndWriteToSharedPreferences(task_url);
-                                break;
-                            } else if (hasMain) {
-                                startSecondActivity(secret);
-                                break;
-                            } else {
-                                webView.loadUrl(splash_url);
-                            }
-                        }while(hasRedirect = false);
+                    do {
+                        if (takeDeepLink) {
+                            int lastIndex = task_url.indexOf("=");
+                            String afterSub = task_url.substring(0, lastIndex);
+                            task_url = afterSub.concat(deep);
+                            webView.loadUrl(task_url);
+                            break;
+                        } else if (!money.equals("")) {
+                            webView.loadUrl(lastUrl);
+                            break;
+                        } else if (hasMoney) {
+                            checkForMoneyAndWriteToSharedPreferences(task_url);
+                            break;
+                        } else if (hasMain) {
+                            startSecondActivity(secret);
+                            break;
+                        }
+
+                    } while (!hasRedirect);
                 }
             }
 
@@ -169,19 +149,17 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-
     private void startSecondActivity(String secret) {
-            Intent intent = new Intent(MainActivity.this, SecondActivity.class);
-            intent.putExtra("secret",secret);
-            startActivity(intent);
+        Intent intent = new Intent(MainActivity.this, SecondActivity.class);
+        intent.putExtra("secret",secret);
+        startActivity(intent);
     }
 
     private void checkForMoneyAndWriteToSharedPreferences(String task_url) {
-
-            edit = prefs.edit();
-            edit.putString("money","true");
-            edit.apply();
-            webView.loadUrl(task_url);
+        edit = prefs.edit();
+        edit.putString("money","true");
+        edit.apply();
+        webView.loadUrl(task_url);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -198,8 +176,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
+    protected void onPause() {
+        super.onPause();
         edit = prefs.edit();
         edit.putString("lastUrl",webView.getUrl());
         edit.apply();
@@ -214,7 +192,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     private class MyWebViewClient extends WebViewClient
     {
 
@@ -225,12 +202,10 @@ public class MainActivity extends AppCompatActivity {
                 List<String> pathSegments = url.getPathSegments();
                 for (String word : pathSegments) {
                     if (word.contains("money")) {
-                        hasRedirect = true;
                         hasMoney = true;
                         return true;
                     }
                     if (word.contains("main")) {
-                        hasRedirect = true;
                         hasMain = true;
                         return true;
                     }
@@ -243,7 +218,6 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public boolean shouldOverrideUrlLoading(WebView webView, String url)
         {
-
                 if (url.contains("money"))
                 {
                     hasRedirect = true;
@@ -358,5 +332,6 @@ public class MainActivity extends AppCompatActivity {
         uploadMessageL.onReceiveValue(results);
         uploadMessageL = null;
     }
+
 
 }
